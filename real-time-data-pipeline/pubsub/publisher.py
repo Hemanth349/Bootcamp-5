@@ -1,7 +1,7 @@
 from google.cloud import pubsub_v1
 import json, time, random
 
-project_id = "your-project-id"
+project_id = "ancient-cortex-465315-t4"
 topic_id = "stream-topic"
 
 publisher = pubsub_v1.PublisherClient()
