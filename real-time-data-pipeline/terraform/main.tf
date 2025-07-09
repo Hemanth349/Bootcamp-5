@@ -3,30 +3,6 @@ provider "google" {
   region  = var.region
 }
 
-resource "google_cloud_run_service" "publisher" {
-  name     = "publisher-service"
-  location = var.region
-
-  template {
-    spec {
-      containers {
-        image = "gcr.io/${var.project_id}/publisher-service:${var.image_tag}"
-      }
-    }
-  }
-
-  traffic {
-    percent         = 100
-    latest_revision = true
-  }
-}
-
-resource "google_project_iam_member" "run_invoker" {
-  project = var.project_id
-  role    = "roles/run.invoker"
-  member  = "allUsers" # Or a specific service account if you want to restrict access
-}
-
 resource "google_pubsub_topic" "stream_topic" {
   name = "stream-topic"
 }
