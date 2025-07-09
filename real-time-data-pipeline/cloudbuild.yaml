@@ -16,6 +16,23 @@ steps:
 - name: 'gcr.io/cloud-builders/docker'
   args: ['push', 'gcr.io/$PROJECT_ID/publisher-service:$SHORT_SHA']
 
+# Step 3: Deploy to Cloud Run
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    [
+      'run',
+      'deploy',
+      'publisher-service',
+      '--image',
+      'gcr.io/$PROJECT_ID/publisher-service:$SHORT_SHA',
+      '--region',
+      'us-central1',
+      '--platform',
+      'managed',
+      '--allow-unauthenticated'
+    ]
+
 # Step 3: Terraform init (run in root where main.tf is)
 - name: 'hashicorp/terraform:light'
   entrypoint: 'terraform'
