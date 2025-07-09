@@ -31,6 +31,6 @@ steps:
       '-auto-approve',
       '-var=image_tag=$SHORT_SHA'
     ]
-  dir: 'real-time-data-pipeline'  # root
+  dir: 'real-time-data-pipeline/terraform'  # root
 
 timeout: '1200s'
