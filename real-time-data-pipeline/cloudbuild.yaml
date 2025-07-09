@@ -20,7 +20,7 @@ steps:
 - name: 'hashicorp/terraform:light'
   entrypoint: 'terraform'
   args: ['init']
-  dir: 'real-time-data-pipeline'  # root
+  dir: 'real-time-data-pipeline/terraform'  # root
 
 # Step 4: Terraform apply with image_tag variable
 - name: 'hashicorp/terraform:light'
