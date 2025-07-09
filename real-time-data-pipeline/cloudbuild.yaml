@@ -1,0 +1,23 @@
+steps:
+# Build Docker image (inside pubsub folder)
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/$PROJECT_ID/publisher-service', '.']
+  dir: 'pubsub'
+
+# Push Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/publisher-service']
+
+# Terraform init (run in root where main.tf is)
+- name: 'hashicorp/terraform:light'
+  entrypoint: 'terraform'
+  args: ['init']
+  dir: '.'  # root
+
+# Terraform apply
+- name: 'hashicorp/terraform:light'
+  entrypoint: 'terraform'
+  args: ['apply', '-auto-approve']
+  dir: '.'  # root
+
+timeout: '1200s'
