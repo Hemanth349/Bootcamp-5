@@ -56,21 +56,25 @@ resource "google_service_account" "dataflow_sa" {
 }
 
 resource "google_project_iam_member" "dataflow_pubsub" {
+  project = var.project_id 
   role   = "roles/pubsub.subscriber"
   member = "serviceAccount:${google_service_account.dataflow_sa.email}"
 }
 
 resource "google_project_iam_member" "dataflow_bq" {
+  project = var.project_id 
   role   = "roles/bigquery.dataEditor"
   member = "serviceAccount:${google_service_account.dataflow_sa.email}"
 }
 
 resource "google_project_iam_member" "dataflow_storage" {
+  project = var.project_id 
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.dataflow_sa.email}"
 }
 
 resource "google_project_iam_member" "dataflow_worker" {
+  project = var.project_id 
   role   = "roles/dataflow.worker"
   member = "serviceAccount:${google_service_account.dataflow_sa.email}"
 }
