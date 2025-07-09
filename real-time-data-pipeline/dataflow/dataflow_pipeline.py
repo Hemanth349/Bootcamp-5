@@ -1,39 +1,44 @@
-import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions
-import json
-from apache_beam.io.gcp.bigquery import WriteToBigQuery
+# dataflow_pipeline.py
 
-class ParseJSON(beam.DoFn):
-    def process(self, element):
-        record = json.loads(element.decode('utf-8'))
-        yield record
+import argparse
+import json
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from datetime import datetime
+
+def parse_pubsub_message(message):
+    record = json.loads(message)
+    record['ingest_time'] = datetime.utcnow().isoformat()
+    return record
 
 def run():
-    options = PipelineOptions(
-        project='your-project-id',
-        region='us-central1',
-        temp_location='gs://your-temp-bucket/temp',
-        streaming=True
-    )
-    with beam.Pipeline(options=options) as p:
-        raw_messages = (
-            p
-            | "ReadFromPubSub" >> beam.io.ReadFromPubSub(topic="projects/your-project-id/topics/stream-topic")
-            | "ParseJSON" >> beam.ParDo(ParseJSON())
-        )
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--project', required=True)
+    parser.add_argument('--region', required=True)
+    parser.add_argument('--input_topic', required=True)
+    parser.add_argument('--output_table', required=True)
+    parser.add_argument('--output_path', required=True)
+    parser.add_argument('--temp_location', required=True)
+    known_args, pipeline_args = parser.parse_known_args()
 
-        # Write processed data to BigQuery
-        raw_messages | "WriteToBigQuery" >> WriteToBigQuery(
-            table='your-project-id:streaming_data.processed_events',
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
-        )
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(StandardOptions).streaming = True
 
-        # Write raw messages to Cloud Storage (as backup)
-        (
-            p
-            | "ReadRawMessages" >> beam.io.ReadFromPubSub(topic="projects/your-project-id/topics/stream-topic")
-            | "WriteToGCS" >> beam.io.WriteToText("gs://your-raw-data-bucket/raw/messages", file_name_suffix=".json")
-        )
+    with beam.Pipeline(options=pipeline_options) as p:
+        (p
+         | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
+         | 'Decode' >> beam.Map(lambda b: b.decode('utf-8'))
+         | 'ParseJSON' >> beam.Map(parse_pubsub_message)
+         | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+                known_args.output_table,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+            )
+         | 'ArchiveToGCS' >> beam.io.WriteToText(
+                known_args.output_path,
+                file_name_suffix=".json",
+                shard_name_template="-SS-of-NN")
+         )
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run()
