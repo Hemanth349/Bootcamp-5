@@ -10,7 +10,7 @@ resource "google_cloud_run_service" "publisher" {
   template {
     spec {
       containers {
-        image = "gcr.io/${var.project_id}/publisher-service"
+        image = "gcr.io/${var.project_id}/publisher-service:${var.image_tag}"
       }
     }
   }
@@ -46,7 +46,8 @@ resource "google_bigquery_table" "processed_table" {
   dataset_id = google_bigquery_dataset.processed_dataset.dataset_id
   table_id   = "user_actions"
 
-  schema = file("${path.module}/../bigquery/schema.py")
+  schema = file("${path.module}/../bigquery/schema.json")
+  
   deletion_protection = false
 }
 
