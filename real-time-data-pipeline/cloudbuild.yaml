@@ -12,7 +12,7 @@ steps:
   # Step 2: Terraform Apply
   - name: 'hashicorp/terraform:light'
     entrypoint: 'terraform'
-    args: ['apply', '-auto-approve']
+    args: ["apply", "-auto-approve", "-var=image_tag=latest"]
     dir: 'real-time-data-pipeline/terraform'
 
   # Step 3: Create Publisher VM (if not already created)
