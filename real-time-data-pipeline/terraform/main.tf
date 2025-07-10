@@ -26,7 +26,6 @@ resource "google_bigquery_table" "processed_table" {
   
   deletion_protection = false
 }
-
 resource "google_service_account" "dataflow_sa" {
   account_id   = "dataflow-sa"
   display_name = "Dataflow Service Account"
