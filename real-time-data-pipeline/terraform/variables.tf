@@ -11,10 +11,6 @@ variable "region" {
   type        = string
   default     = "us-central1"
 }
-variable "image_tag" {
-  description = "Tag for Docker image"
-  type        = string
-  default     = "latest"
-}
+
 
 
