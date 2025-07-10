@@ -3,12 +3,21 @@ options:
 serviceAccount: cloud-build-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com
 
 steps:
+  # Clean up any previous Terraform dirs (optional but safe)
+  - name: 'gcr.io/cloud-builders/git'
+    entrypoint: 'sh'
+    args: ['-c', 'rm -rf .terraform']
+    dir: 'real-time-data-pipeline/terraform'
   # Step 1: Terraform Init
   - name: 'hashicorp/terraform:light'
-    entrypoint: 'terraform'
-    args: ['init']
+    entrypoint: 'sh'
+    args:
+      - -c
+      - |
+        terraform init \
+          -backend-config="bucket=ancient-cortex-465315-tfstate" \
+          -backend-config="prefix=real-time-data-pipeline/terraform"
     dir: 'real-time-data-pipeline/terraform'
-
   # Step 2: Terraform Apply
   - name: 'hashicorp/terraform:light'
     entrypoint: 'terraform'
