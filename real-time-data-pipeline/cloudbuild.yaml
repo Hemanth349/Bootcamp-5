@@ -1,5 +1,5 @@
-options:
-  logging: CLOUD_LOGGING_ONLY
+#options:
+  #logging: CLOUD_LOGGING_ONLY
 serviceAccount: cloud-build-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com
 
 steps:
