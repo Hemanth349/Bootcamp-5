@@ -3,7 +3,7 @@
 variable "project_id" {
   description = "The GCP project ID"
   type        = string
-  default     = "ancient-cortex-465315-t4"
+  default     = "project-2-465522"
 }
 
 variable "region" {
