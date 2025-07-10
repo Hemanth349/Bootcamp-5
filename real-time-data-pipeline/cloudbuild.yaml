@@ -15,7 +15,7 @@ steps:
       - -c
       - |
         terraform init \
-          -backend-config="your-tf-state-bucket1" \
+          -backend-config="bucket=your-tf-state-bucket1" \
           -backend-config="prefix=real-time-data-pipeline/terraform"
     dir: 'real-time-data-pipeline/terraform'
   # Step 2: Terraform Apply
