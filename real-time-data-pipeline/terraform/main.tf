@@ -30,27 +30,27 @@ resource "google_bigquery_table" "processed_table" {
   #account_id   = "dataflow-sa"
   #display_name = "Dataflow Service Account"
 #}
-
 resource "google_project_iam_member" "dataflow_pubsub" {
   project = var.project_id 
-  role   = "roles/pubsub.subscriber"
-  member = "serviceAccount:${google_service_account.dataflow_sa.email}"
+  role    = "roles/pubsub.subscriber"
+  member  = "serviceAccount:dataflow-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "dataflow_bq" {
   project = var.project_id 
-  role   = "roles/bigquery.dataEditor"
-  member = "serviceAccount:${google_service_account.dataflow_sa.email}"
+  role    = "roles/bigquery.dataEditor"
+  member  = "serviceAccount:dataflow-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "dataflow_storage" {
   project = var.project_id 
-  role   = "roles/storage.objectAdmin"
-  member = "serviceAccount:${google_service_account.dataflow_sa.email}"
+  role    = "roles/storage.objectAdmin"
+  member  = "serviceAccount:dataflow-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com"
 }
 
 resource "google_project_iam_member" "dataflow_worker" {
   project = var.project_id 
-  role   = "roles/dataflow.worker"
-  member = "serviceAccount:${google_service_account.dataflow_sa.email}"
+  role    = "roles/dataflow.worker"
+  member  = "serviceAccount:dataflow-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com"
 }
+
