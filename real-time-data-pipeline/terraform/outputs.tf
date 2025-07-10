@@ -12,6 +12,4 @@ output "bigquery_table" {
   value = google_bigquery_table.processed_table.table_id
 }
 
-output "dataflow_service_account" {
-  value = google_service_account.dataflow_sa.email
-}
+
