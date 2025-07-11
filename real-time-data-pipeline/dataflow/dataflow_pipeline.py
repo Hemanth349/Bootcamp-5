@@ -1,5 +1,3 @@
-# dataflow_pipeline.py
-
 import argparse
 import json
 import apache_beam as beam
@@ -25,20 +23,12 @@ def run():
     pipeline_options.view_as(StandardOptions).streaming = True
 
     with beam.Pipeline(options=pipeline_options) as p:
-        (p
-         | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
-         | 'Decode' >> beam.Map(lambda b: b.decode('utf-8'))
-         | 'ParseJSON' >> beam.Map(parse_pubsub_message)
-         | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-                known_args.output_table,
-                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-            )
-         | 'ArchiveToGCS' >> beam.io.WriteToText(
-                known_args.output_path,
-                file_name_suffix=".json",
-                shard_name_template="-SS-of-NN")
-         )
-
-if __name__ == '__main__':
-    run()
+        records = (
+            p
+            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic).with_output_types(bytes)
+            | 'Decode' >> beam.Map(lambda b: b.decode('utf-8'))
+            | 'ParseJSON' >> beam.Map(parse_pubsub_message)
+        )
+        
+        # Write the parsed records to BigQuery
+        records | 'WriteToBigQuery' >> beam.io.WriteToBigQu
