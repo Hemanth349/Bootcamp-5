@@ -1,59 +1,74 @@
-import argparse
-import json
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, SetupOptions
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.transforms.window import FixedWindows
 
-
-def parse_pubsub_message(message):
-    """Parses a Pub/Sub message (bytes) into a dict for BigQuery."""
-    try:
-        decoded = message.decode("utf-8")
-        parsed = json.loads(decoded)
-        return parsed
-    except Exception as e:
-        print(f"Error parsing message: {e}")
-        return None
-
-
-def run():
-    # Parse command-line arguments
+def run(argv=None):
+    import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument('--project', required=True)
+    parser.add_argument('--region', required=True)
+    parser.add_argument('--runner', required=True)
     parser.add_argument('--input_topic', required=True)
-    parser.add_argument('--output_table', required=True)  # Format: project:dataset.table
-    parser.add_argument('--output_path', required=True)   # GCS path
-    parser.add_argument('--streaming', action='store_true')
-    known_args, pipeline_args = parser.parse_known_args()
+    parser.add_argument('--output_table', required=True)
+    parser.add_argument('--output_path', required=True)
+    parser.add_argument('--temp_location', required=True)
+    parser.add_argument('--staging_location', required=True)
+    args, pipeline_args = parser.parse_known_args(argv)
 
-    # Set up pipeline options
-    pipeline_options = PipelineOptions(pipeline_args)
-    pipeline_options.view_as(SetupOptions).save_main_session = True
-    pipeline_options.view_as(beam.options.pipeline_options.StandardOptions).streaming = known_args.streaming
+    # Set pipeline options
+    options = PipelineOptions(pipeline_args)
+    options.view_as(StandardOptions).streaming = True
 
-    with beam.Pipeline(options=pipeline_options) as p:
-        messages = (
+    with beam.Pipeline(options=options) as p:
+        # Read from Pub/Sub topic
+        records = (
             p
-            | "ReadFromPubSub" >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
-            | "Decode" >> beam.Map(lambda x: x.decode("utf-8"))  # Decode from bytes to string
+            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=args.input_topic)
+            | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))
         )
 
-        # Save raw messages to GCS
-        messages | "WriteToGCS" >> beam.io.WriteToText(known_args.output_path + "messages")
-
-        # Parse JSON and filter valid records
-        parsed_rows = (
-            messages
-            | "ParseJSON" >> beam.Map(lambda x: json.loads(x))
-            | "FilterValid" >> beam.Filter(lambda record: record is not None)
+        # Apply windowing before GroupByKey
+        windowed_records = (
+            records
+            | 'WindowIntoFixed' >> beam.WindowInto(FixedWindows(60))  # 60 second windows
         )
 
-        # Write to BigQuery
-        parsed_rows | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
-            known_args.output_table,
+        # Assuming your records are key-value pairs, for example:
+        # Transform records into key-value tuples before GroupByKey
+        # Example: (user_id, action)
+        kv_pairs = (
+            windowed_records
+            | 'ParseToKV' >> beam.Map(lambda record: parse_record_to_kv(record))
+        )
+
+        grouped = kv_pairs | 'GroupByKey' >> beam.GroupByKey()
+
+        # Process grouped data here
+        # For example, count actions per user in each window
+        results = (
+            grouped
+            | 'CountActions' >> beam.Map(lambda kv: (kv[0], len(kv[1])))
+        )
+
+        # Write results to BigQuery (example)
+        results | 'WriteToBQ' >> beam.io.WriteToBigQuery(
+            args.output_table,
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
-            custom_gcs_temp_location=known_args.output_path + "bq_temp/",
+            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
 
+        # Archive raw data to GCS as text files
+        records | 'ArchiveToGCS' >> beam.io.WriteToText(
+            file_path_prefix=args.output_path,
+            file_name_suffix='.txt'
+        )
+
+def parse_record_to_kv(record):
+    # Example parse function; modify to your schema
+    # Suppose record is a JSON string like '{"user_id":"123", "action":"click"}'
+    import json
+    data = json.loads(record)
+    return data['user_id'], data['action']
 
 if __name__ == '__main__':
     run()
