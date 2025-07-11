@@ -1,74 +1,118 @@
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, SetupOptions
 from apache_beam.transforms.window import FixedWindows
+import argparse
+import json
 
 def run(argv=None):
-    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project', required=True)
-    parser.add_argument('--region', required=True)
-    parser.add_argument('--runner', required=True)
-    parser.add_argument('--input_topic', required=True)
-    parser.add_argument('--output_table', required=True)
-    parser.add_argument('--output_path', required=True)
-    parser.add_argument('--temp_location', required=True)
-    parser.add_argument('--staging_location', required=True)
-    args, pipeline_args = parser.parse_known_args(argv)
+
+    parser.add_argument(
+        '--project',
+        required=True,
+        help='Google Cloud project ID')
+    parser.add_argument(
+        '--region',
+        required=True,
+        help='GCP region')
+    parser.add_argument(
+        '--runner',
+        required=True,
+        help='Pipeline runner (DataflowRunner or DirectRunner)')
+    parser.add_argument(
+        '--input_topic',
+        required=True,
+        help='Input Pub/Sub topic of the form "projects/{project_id}/topics/{topic_name}"')
+    parser.add_argument(
+        '--output_table',
+        required=True,
+        help='BigQuery output table of the form "project:dataset.table"')
+    parser.add_argument(
+        '--output_path',
+        required=True,
+        help='GCS path for archiving raw data, e.g. gs://bucket/path')
+    parser.add_argument(
+        '--temp_location',
+        required=True,
+        help='GCS temp location for Dataflow')
+    parser.add_argument(
+        '--staging_location',
+        required=True,
+        help='GCS staging location for Dataflow')
+
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
     # Set pipeline options
-    options = PipelineOptions(pipeline_args)
-    options.view_as(StandardOptions).streaming = True
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(StandardOptions).runner = known_args.runner
+    pipeline_options.view_as(StandardOptions).streaming = True
+    pipeline_options.view_as(SetupOptions).save_main_session = True
 
-    with beam.Pipeline(options=options) as p:
-        # Read from Pub/Sub topic
-        records = (
+    # Define a simple parsing function to parse JSON messages from Pub/Sub
+    def parse_pubsub_message(message):
+        try:
+            decoded = message.decode('utf-8')
+            return json.loads(decoded)
+        except Exception as e:
+            # In case of malformed JSON, skip or log as needed
+            return None
+
+    # Transform parsed record into a BigQuery row and also create a key-value for grouping (example)
+    def to_bq_row(record):
+        # Example: assuming record has user_id and action fields
+        return {
+            'user_id': record.get('user_id', ''),
+            'action': record.get('action', ''),
+            'timestamp': record.get('timestamp', '')
+        }
+
+    # Create a KV pair for GroupByKey (example key: user_id)
+    def to_kv(record):
+        return (record.get('user_id', 'unknown'), record)
+
+    with beam.Pipeline(options=pipeline_options) as p:
+
+        raw_records = (
             p
-            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=args.input_topic)
-            | 'Decode' >> beam.Map(lambda x: x.decode('utf-8'))
+            | "ReadFromPubSub" >> beam.io.ReadFromPubSub(topic=known_args.input_topic, with_attributes=False)
+            | "ParseJSON" >> beam.Map(parse_pubsub_message)
+            | "FilterValid" >> beam.Filter(lambda x: x is not None)
         )
 
-        # Apply windowing before GroupByKey
-        windowed_records = (
-            records
-            | 'WindowIntoFixed' >> beam.WindowInto(FixedWindows(60))  # 60 second windows
+        # Archive raw records as JSON lines to GCS
+        (
+            raw_records
+            | "ConvertToJsonStr" >> beam.Map(json.dumps)
+            | "ArchiveToGCS" >> beam.io.WriteToText(
+                known_args.output_path + '/raw_records',
+                file_name_suffix='.json',
+                shard_name_template='-SS-of-NN',
+                num_shards=5
+            )
         )
 
-        # Assuming your records are key-value pairs, for example:
-        # Transform records into key-value tuples before GroupByKey
-        # Example: (user_id, action)
-        kv_pairs = (
-            windowed_records
-            | 'ParseToKV' >> beam.Map(lambda record: parse_record_to_kv(record))
+        # Window and GroupByKey example: windowed by 1 minute fixed windows
+        windowed_kv_records = (
+            raw_records
+            | "ToKV" >> beam.Map(to_kv)
+            | "ApplyWindow" >> beam.WindowInto(FixedWindows(60))
+            | "GroupByUserId" >> beam.GroupByKey()
         )
 
-        grouped = kv_pairs | 'GroupByKey' >> beam.GroupByKey()
-
-        # Process grouped data here
-        # For example, count actions per user in each window
-        results = (
-            grouped
-            | 'CountActions' >> beam.Map(lambda kv: (kv[0], len(kv[1])))
+        # Flatten grouped records (example: just take first action per user per window)
+        flattened_records = (
+            windowed_kv_records
+            | "ExtractFirstRecord" >> beam.Map(lambda kv: to_bq_row(kv[1][0]) if kv[1] else None)
+            | "FilterNone" >> beam.Filter(lambda x: x is not None)
         )
 
-        # Write results to BigQuery (example)
-        results | 'WriteToBQ' >> beam.io.WriteToBigQuery(
-            args.output_table,
+        # Write to BigQuery
+        flattened_records | "WriteToBigQuery" >> beam.io.WriteToBigQuery(
+            known_args.output_table,
+            schema='user_id:STRING, action:STRING, timestamp:STRING',
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
-
-        # Archive raw data to GCS as text files
-        records | 'ArchiveToGCS' >> beam.io.WriteToText(
-            file_path_prefix=args.output_path,
-            file_name_suffix='.txt'
-        )
-
-def parse_record_to_kv(record):
-    # Example parse function; modify to your schema
-    # Suppose record is a JSON string like '{"user_id":"123", "action":"click"}'
-    import json
-    data = json.loads(record)
-    return data['user_id'], data['action']
 
 if __name__ == '__main__':
     run()
