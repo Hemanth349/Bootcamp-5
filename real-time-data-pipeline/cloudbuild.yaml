@@ -73,4 +73,5 @@ steps:
     args:
       - -c
       - |
-        gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --command="nohup python3 /opt/app/publisher.py > /opt/app/publisher.log 2>&1 &"
+         gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --tunnel-through-iap --command="nohup python3 /opt/app/publisher.py > /opt/app/publisher.log 2>&1 &"
+
