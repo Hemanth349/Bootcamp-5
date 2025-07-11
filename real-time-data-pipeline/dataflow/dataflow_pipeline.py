@@ -1,13 +1,17 @@
 import argparse
 import json
+import sys
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-from datetime import datetime
+
 
 def parse_pubsub_message(message):
-    record = json.loads(message)
-    record['ingest_time'] = datetime.utcnow().isoformat()
-    return record
+    """Parse JSON string from Pub/Sub into a Python dictionary."""
+    try:
+        return json.loads(message)
+    except json.JSONDecodeError:
+        return {}
+
 
 def run():
     parser = argparse.ArgumentParser()
@@ -17,19 +21,13 @@ def run():
     parser.add_argument('--output_table', required=True)
     parser.add_argument('--output_path', required=True)
     parser.add_argument('--temp_location', required=True)
-    known_args, pipeline_args = parser.parse_known_args()
+    parser.add_argument('--staging_location', required=True)
+    
+    # Only used for internal logic, full args go to Beam
+    known_args, _ = parser.parse_known_args()
 
-    # Add required options explicitly to pipeline_args:
-    pipeline_args.extend([
-        f'--project={known_args.project}',
-        f'--region={known_args.region}',
-        f'--temp_location={known_args.temp_location}',
-        f'--staging_location={known_args.temp_location}/staging',
-        '--runner=DataflowRunner',
-        '--streaming'
-    ])
-
-    pipeline_options = PipelineOptions(pipeline_args)
+    # Pass full args to Beam
+    pipeline_options = PipelineOptions(sys.argv[1:])
     pipeline_options.view_as(StandardOptions).streaming = True
 
     with beam.Pipeline(options=pipeline_options) as p:
@@ -39,15 +37,21 @@ def run():
             | 'Decode' >> beam.Map(lambda b: b.decode('utf-8'))
             | 'ParseJSON' >> beam.Map(parse_pubsub_message)
         )
-        
+
+        # Write to BigQuery
         records | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
             known_args.output_table,
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
-        
+
+        # Archive to GCS
         records | 'ArchiveToGCS' >> beam.io.WriteToText(
             known_args.output_path,
             file_name_suffix=".json",
             shard_name_template="-SS-of-NN"
         )
+
+
+if __name__ == '__main__':
+    run()
