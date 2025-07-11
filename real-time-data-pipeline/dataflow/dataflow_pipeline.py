@@ -12,30 +12,21 @@ def parse_pubsub_message(message):
 
 
 def run():
+    # Step 1: Let Beam parse all known args first
+    pipeline_options = PipelineOptions()
+    standard_options = pipeline_options.view_as(StandardOptions)
+    standard_options.streaming = True
+
+    # Step 2: Parse your custom arguments separately from sys.argv
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project', required=True)
-    parser.add_argument('--region', required=True)
     parser.add_argument('--input_topic', required=True)
     parser.add_argument('--output_table', required=True)
     parser.add_argument('--output_path', required=True)
     parser.add_argument('--temp_location', required=True)
     parser.add_argument('--staging_location', required=True)
+    known_args, _ = parser.parse_known_args()
 
-    known_args, pipeline_args = parser.parse_known_args()
-
-    # Explicitly add required pipeline options
-    pipeline_args.extend([
-        f'--project={known_args.project}',
-        f'--region={known_args.region}',
-        f'--temp_location={known_args.temp_location}',
-        f'--staging_location={known_args.staging_location}',
-        '--runner=DataflowRunner',
-        '--streaming'
-    ])
-
-    pipeline_options = PipelineOptions(pipeline_args)
-    pipeline_options.view_as(StandardOptions).streaming = True
-
+    # Step 3: Proceed with pipeline
     with beam.Pipeline(options=pipeline_options) as p:
         records = (
             p
@@ -55,7 +46,3 @@ def run():
             file_name_suffix=".json",
             shard_name_template="-SS-of-NN"
         )
-
-
-if __name__ == '__main__':
-    run()
