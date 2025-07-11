@@ -81,7 +81,7 @@ steps:
       - compute
       - scp
       - real-time-data-pipeline/pubsub/publisher.py
-      - pubsub-publisher-vm:/opt/app/publisher.py
+      - gs://ancient-cortex-465315-t4-raw-data/publisher.py
       - --zone=us-central1-a
       - --quiet
 
