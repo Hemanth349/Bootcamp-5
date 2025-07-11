@@ -1,12 +1,10 @@
 import argparse
 import json
-import sys
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
 
 def parse_pubsub_message(message):
-    """Parse JSON string from Pub/Sub into a Python dictionary."""
     try:
         return json.loads(message)
     except json.JSONDecodeError:
@@ -22,12 +20,20 @@ def run():
     parser.add_argument('--output_path', required=True)
     parser.add_argument('--temp_location', required=True)
     parser.add_argument('--staging_location', required=True)
-    
-    # Only used for internal logic, full args go to Beam
-    known_args, _ = parser.parse_known_args()
 
-    # Pass full args to Beam
-    pipeline_options = PipelineOptions(sys.argv[1:])
+    known_args, pipeline_args = parser.parse_known_args()
+
+    # Explicitly add required pipeline options
+    pipeline_args.extend([
+        f'--project={known_args.project}',
+        f'--region={known_args.region}',
+        f'--temp_location={known_args.temp_location}',
+        f'--staging_location={known_args.staging_location}',
+        '--runner=DataflowRunner',
+        '--streaming'
+    ])
+
+    pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(StandardOptions).streaming = True
 
     with beam.Pipeline(options=pipeline_options) as p:
@@ -38,14 +44,12 @@ def run():
             | 'ParseJSON' >> beam.Map(parse_pubsub_message)
         )
 
-        # Write to BigQuery
         records | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
             known_args.output_table,
             write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
 
-        # Archive to GCS
         records | 'ArchiveToGCS' >> beam.io.WriteToText(
             known_args.output_path,
             file_name_suffix=".json",
