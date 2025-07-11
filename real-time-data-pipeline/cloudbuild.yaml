@@ -1,6 +1,6 @@
 options:
   logging: CLOUD_LOGGING_ONLY
-serviceAccount: cloud-build-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com
+  serviceAccount: cloud-build-sa@ancient-cortex-465315-t4.iam.gserviceaccount.com
 
 steps:
   # Clean up any previous Terraform dirs (optional but safe)
@@ -8,7 +8,8 @@ steps:
     entrypoint: 'sh'
     args: ['-c', 'rm -rf .terraform']
     dir: 'real-time-data-pipeline/terraform'
-  # Step 1: Terraform Init
+
+  # Terraform Init
   - name: 'hashicorp/terraform:light'
     entrypoint: 'sh'
     args:
@@ -18,16 +19,29 @@ steps:
           -backend-config="bucket=your-tf-state-bucket1" \
           -backend-config="prefix=real-time-data-pipeline/terraform"
     dir: 'real-time-data-pipeline/terraform'
-  # Step 2: Terraform Apply
+
+  # Terraform Import existing resources to avoid conflicts
   - name: 'hashicorp/terraform:light'
-    entrypoint: 'terraform'
-    args: ["apply", "-auto-approve"]
+    entrypoint: 'sh'
+    args:
+      - -c
+      - |
+        terraform import google_pubsub_topic.stream_topic stream-topic || echo "Pub/Sub topic already imported"
+        terraform import google_storage_bucket.raw_data_bucket ancient-cortex-465315-t4-raw-data || echo "Bucket already imported"
+        terraform import google_bigquery_dataset.processed_dataset streaming_output || echo "Dataset already imported"
+        terraform import google_bigquery_table.processed_table projects/ancient-cortex-465315-t4/datasets/streaming_output/tables/user_actions || echo "Table already imported"
     dir: 'real-time-data-pipeline/terraform'
 
-  # Step 3: Create Publisher VM (if not already created)
+  # Terraform Apply to create/update resources
+  - name: 'hashicorp/terraform:light'
+    entrypoint: 'terraform'
+    args: ['apply', '-auto-approve']
+    dir: 'real-time-data-pipeline/terraform'
+
+  # Create Publisher VM if not already created
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'create-vm'
-    entrypoint: bash
+    entrypoint: 'bash'
     args:
       - -c
       - |
@@ -42,7 +56,7 @@ steps:
             pip3 install google-cloud-pubsub
             mkdir -p /opt/app' || echo "VM already exists, continuing..."
 
-  # Step 4: Copy publisher.py to the VM
+  # Copy publisher.py script to VM
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'copy-script'
     args:
@@ -52,10 +66,10 @@ steps:
       - pubsub-publisher-vm:/opt/app/publisher.py
       - --zone=us-central1-a
 
-  # Step 5: Run publisher.py in background
+  # Start publisher.py in background on VM
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'start-script'
-    entrypoint: bash
+    entrypoint: 'bash'
     args:
       - -c
       - |
