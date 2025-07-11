@@ -69,6 +69,8 @@ steps:
           --machine-type=e2-micro \
           --image-family=debian-11 \
           --image-project=debian-cloud \
+          --scopes=https://www.googleapis.com/auth/cloud-platform \
+          --tags=allow-ssh \
           --quiet || echo "VM likely already exists"
 
   # Copy script to VM
