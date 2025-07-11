@@ -54,4 +54,24 @@ steps:
           --scopes=https://www.googleapis.com/auth/cloud-platform \
           --tags=allow-ssh \
           --metadata=ssh-keys="sriyakalamata64:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDHawoZTGDDoVASFyV4hKmrz+KAZ4Te0PTtZsXK6iPp+7Bov9gJA5rHFkdFvHI50mIWKg3UYfYoARrIDRfW8uw8vPZYRf+nYhtvLu25KQvVBg0vD7fZDv/1deFVtoAUgzvREKiuILNP3n3CLTAxb7Grgo5+kIW8bqWLcTpuWEeFrV5fvRKBgXlSDXFlEc9dwQ3VxtOtdLeIJokGlhN4q74pGW1ViEz+0u7sd/KE0xEvNoj7TybvU78fjcqANgA5AD/5lZG92VK7hy5hkEM77igpPC42QsjRTtcUjBE037JSZsUM3eb0C6D8G+Vf+kjx2x3o+p9AtKDAcTnv+V7KO2zx sriyakalamata64@pubsub-publisher-vm" \
-          --quiet || echo "VM like
+          --quiet || echo "VM likely already exists"
+        echo "Waiting 60 seconds for SSH keys to propagate..."
+        sleep 60
+
+  # Copy script to VM by SSH and gsutil copy from bucket
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: copy-from-bucket
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --command="mkdir -p /opt/app && gsutil cp gs://ancient-cortex-465315-t4-raw-data/publisher.py /opt/app/publisher.py"
+
+  # Run publisher.py on VM
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: run-script
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --command="nohup python3 /opt/app/publisher.py > /opt/app/publisher.log 2>&1 &"
