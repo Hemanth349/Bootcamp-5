@@ -1,25 +1,26 @@
 import argparse
 import json
+import sys
 import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+
 
 def parse_pubsub_message(message):
     try:
         return json.loads(message)
     except json.JSONDecodeError:
-        return {'error': 'invalid_json'}
+        return {}
 
-def run(argv=None):
+
+def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_topic', required=True)
     parser.add_argument('--output_table', required=True)
     parser.add_argument('--output_path', required=True)
-    
-    # Do not add project/region manually — let PipelineOptions handle it
-    known_args, pipeline_args = parser.parse_known_args(argv)
+    known_args, _ = parser.parse_known_args()
 
-    # ✅ This MUST be passed to PipelineOptions
-    pipeline_options = PipelineOptions(pipeline_args)
+    # ✅ Correct way to pass pipeline options from CLI
+    pipeline_options = PipelineOptions(sys.argv)
     pipeline_options.view_as(StandardOptions).streaming = True
 
     with beam.Pipeline(options=pipeline_options) as p:
@@ -42,6 +43,6 @@ def run(argv=None):
             shard_name_template="-SS-of-NN"
         )
 
+
 if __name__ == '__main__':
-    import sys
-    run(sys.argv)
+    run()
