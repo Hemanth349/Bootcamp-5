@@ -39,25 +39,44 @@ steps:
     args: ['apply', '-auto-approve']
     dir: 'real-time-data-pipeline/terraform'
 
-  # Create Publisher VM if not already created
+ # Step 3: Create Publisher VM only if not exists
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'create-vm'
     entrypoint: 'bash'
     args:
       - -c
       - |
-        gcloud compute instances create pubsub-publisher-vm \
-          --zone=us-central1-a \
-          --machine-type=e2-micro \
-          --image-family=debian-11 \
-          --image-project=debian-cloud \
-          --metadata=startup-script='#!/bin/bash
-            apt-get update
-            apt-get install -y python3-pip
-            pip3 install google-cloud-pubsub
-            mkdir -p /opt/app' || echo "VM already exists, continuing..."
+        if gcloud compute instances describe pubsub-publisher-vm --zone=us-central1-a &> /dev/null; then
+          echo "VM already exists, skipping creation"
+        else
+          gcloud compute instances create pubsub-publisher-vm \
+            --zone=us-central1-a \
+            --machine-type=e2-micro \
+            --image-family=debian-11 \
+            --image-project=debian-cloud || exit 1
+        fi
 
-  # Copy publisher.py script to VM
+  # Step 4: Wait for VM to be RUNNING
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'wait-for-vm'
+    entrypoint: 'bash'
+    args:
+      - -c
+      - |
+        echo "Waiting for pubsub-publisher-vm to be RUNNING..."
+        for i in {1..30}; do
+          status=$(gcloud compute instances describe pubsub-publisher-vm --zone=us-central1-a --format='get(status)')
+          if [ "$status" == "RUNNING" ]; then
+            echo "VM is RUNNING"
+            exit 0
+          fi
+          echo "Current status: $status; waiting 5 seconds..."
+          sleep 5
+        done
+        echo "Timed out waiting for VM to be RUNNING"
+        exit 1
+
+  # Step 5: Copy publisher.py to the VM
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'copy-script'
     args:
@@ -67,7 +86,7 @@ steps:
       - pubsub-publisher-vm:/opt/app/publisher.py
       - --zone=us-central1-a
 
-  # Start publisher.py in background on VM
+  # Step 6: Run publisher.py in background
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'start-script'
     entrypoint: 'bash'
