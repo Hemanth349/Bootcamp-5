@@ -65,8 +65,7 @@ steps:
     args:
       - -c
       - |
-        gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --command="mkdir -p /opt/app && gsutil cp gs://ancient-cortex-465315-t4-raw-data/publisher.py /opt/app/publisher.py"
-
+        gcloud compute ssh pubsub-publisher-vm --zone=us-central1-a --tunnel-through-iap --command="mkdir -p /opt/app && gsutil cp gs://ancient-cortex-465315-t4-raw-data/publisher.py /opt/app/publisher.py"
   # Run publisher.py on VM
   - name: 'gcr.io/cloud-builders/gcloud'
     id: run-script
