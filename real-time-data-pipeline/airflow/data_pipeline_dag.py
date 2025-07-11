@@ -19,7 +19,7 @@ with models.DAG(
     run_dataflow_flex_template = DataflowStartFlexTemplateOperator(
         task_id="run_streaming_pipeline",
         project_id="ancient-cortex-465315-t4",
-        region="us-central1",
+        location="us-central1",  # <-- Added location here
         body={
             "launchParameter": {
                 "jobName": "streaming-dataflow-job",
