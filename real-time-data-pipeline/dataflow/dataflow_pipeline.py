@@ -19,6 +19,16 @@ def run():
     parser.add_argument('--temp_location', required=True)
     known_args, pipeline_args = parser.parse_known_args()
 
+    # Add required options explicitly to pipeline_args:
+    pipeline_args.extend([
+        f'--project={known_args.project}',
+        f'--region={known_args.region}',
+        f'--temp_location={known_args.temp_location}',
+        f'--staging_location={known_args.temp_location}/staging',
+        '--runner=DataflowRunner',
+        '--streaming'
+    ])
+
     pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(StandardOptions).streaming = True
 
@@ -30,5 +40,14 @@ def run():
             | 'ParseJSON' >> beam.Map(parse_pubsub_message)
         )
         
-        # Write the parsed records to BigQuery
-        records | 'WriteToBigQuery' >> beam.io.WriteToBigQu
+        records | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+            known_args.output_table,
+            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+        )
+        
+        records | 'ArchiveToGCS' >> beam.io.WriteToText(
+            known_args.output_path,
+            file_name_suffix=".json",
+            shard_name_template="-SS-of-NN"
+        )
