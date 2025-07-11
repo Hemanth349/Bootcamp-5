@@ -9,35 +9,19 @@ def parse_pubsub_message(message):
     except json.JSONDecodeError:
         return {'error': 'invalid_json'}
 
-def run():
-    # Step 1: Parse ALL args first (so you can pass them to Beam)
+def run(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--project', required=True)
-    parser.add_argument('--region', required=True)
-    parser.add_argument('--runner', required=True)
     parser.add_argument('--input_topic', required=True)
     parser.add_argument('--output_table', required=True)
     parser.add_argument('--output_path', required=True)
-    parser.add_argument('--temp_location', required=True)
-    parser.add_argument('--staging_location', required=True)
     
-    known_args, pipeline_args = parser.parse_known_args()
+    # Do not add project/region manually — let PipelineOptions handle it
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
-    # Step 2: Add required pipeline args if missing
-    pipeline_args.extend([
-        f'--project={known_args.project}',
-        f'--region={known_args.region}',
-        f'--runner={known_args.runner}',
-        f'--temp_location={known_args.temp_location}',
-        f'--staging_location={known_args.staging_location}',
-        '--streaming'
-    ])
-
-    # Step 3: Create options using all args
+    # ✅ This MUST be passed to PipelineOptions
     pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(StandardOptions).streaming = True
 
-    # Step 4: Build pipeline
     with beam.Pipeline(options=pipeline_options) as p:
         records = (
             p
@@ -59,4 +43,5 @@ def run():
         )
 
 if __name__ == '__main__':
-    run()
+    import sys
+    run(sys.argv)
