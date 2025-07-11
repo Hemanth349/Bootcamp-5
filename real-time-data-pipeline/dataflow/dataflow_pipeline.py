@@ -1,5 +1,5 @@
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, GoogleCloudOptions
 import sys
 import json
 
@@ -7,11 +7,23 @@ def parse_pubsub_message(message):
     return json.loads(message)
 
 def run():
-    # Pass all CLI args directly
+    # Read CLI args
     pipeline_options = PipelineOptions(sys.argv[1:])
-    pipeline_options.view_as(StandardOptions).streaming = True
+    
+    # Explicitly set GoogleCloudOptions for project and region to avoid validation errors
+    google_cloud_options = pipeline_options.view_as(GoogleCloudOptions)
+    standard_options = pipeline_options.view_as(StandardOptions)
 
-    # Access your custom args from the pipeline options
+    # Make sure project and region are set explicitly (these come from CLI args)
+    if not google_cloud_options.project:
+        raise ValueError('Missing required pipeline option: --project')
+    if not google_cloud_options.region:
+        raise ValueError('Missing required pipeline option: --region')
+
+    # Enable streaming mode
+    standard_options.streaming = True
+
+    # Access custom options:
     opts = pipeline_options.get_all_options()
     input_topic = opts.get('input_topic')
     output_table = opts.get('output_table')
