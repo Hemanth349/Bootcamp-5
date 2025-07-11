@@ -1,5 +1,3 @@
-# data_pipeline_dag.py
-
 from airflow import models
 from airflow.providers.google.cloud.operators.dataflow import DataflowStartFlexTemplateOperator
 from airflow.utils.dates import days_ago
@@ -25,14 +23,14 @@ with models.DAG(
         body={
             "launchParameter": {
                 "jobName": "streaming-dataflow-job",
-                "containerSpecGcsPath": "gs://<YOUR_BUCKET>/templates/dataflow_template.json",
+                "containerSpecGcsPath": "gs://ancient-cortex-465315-t4-raw-data/templates/dataflow_template.json",
                 "environment": {
-                    "tempLocation": "gs://<YOUR_BUCKET>/temp/"
+                    "tempLocation": "gs://ancient-cortex-465315-t4-raw-data/temp/"
                 },
                 "parameters": {
                     "input_topic": "projects/ancient-cortex-465315-t4/topics/stream-topic",
                     "output_table": "ancient-cortex-465315-t4:streaming_output.user_actions",
-                    "output_path": "gs://<YOUR_BUCKET>/archive/output"
+                    "output_path": "gs://ancient-cortex-465315-t4-raw-data/archive/output"
                 }
             }
         },
