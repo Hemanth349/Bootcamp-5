@@ -1,56 +1,39 @@
-from flask import Flask
-import threading
-import time
-import random
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.transforms.window import FixedWindows
 import json
-from google.cloud import pubsub_v1
-import os
-
-app = Flask(__name__)
 
 project_id = "ancient-cortex-465315-t4"
 topic_id = "stream-topic"
-# Create a Pub/Sub publisher client
-publisher = pubsub_v1.PublisherClient()
-# Create the topic path (required by the API)
-topic_path = publisher.topic_path(project_id, topic_id)
+subscription_id = "stream-subscription"  # if you use subscription
 
-def publish_messages():
-    print("Publishing messages to Pub/Sub...")
-    while True:
-          # Infinite loop to send messages every 2 seconds
-        data = {
-            "user_id": f"user_{random.randint(1,100)}",
-            "action": random.choice(["click", "purchase", "view"]),
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-        }
-      # Convert to bytes and publish to Pub/Sub
-        publisher.publish(topic_path, json.dumps(data).encode("utf-8"))
-        time.sleep(2)     # Wait for 2 seconds
+class ParseMessage(beam.DoFn):
+    def process(self, element):
+        record = json.loads(element)
+        yield record
 
-@app.route("/")
-def health_check():
-    return "Publisher service is running!", 200
+def run():
+    options = PipelineOptions()
+    options.view_as(StandardOptions).streaming = True
+
+    with beam.Pipeline(options=options) as p:
+        messages = (
+            p
+            | "ReadFromPubSub" >> beam.io.ReadFromPubSub(topic=f"projects/{project_id}/topics/{topic_id}")
+            | "Decode" >> beam.Map(lambda x: x.decode('utf-8'))
+            | "ParseJSON" >> beam.ParDo(ParseMessage())
+            # Apply fixed windows of 1 minute
+            | "WindowIntoFixed" >> beam.WindowInto(FixedWindows(60))
+        )
+
+        grouped = (
+            messages
+            | "KeyByUserId" >> beam.Map(lambda record: (record['user_id'], record))
+            | "GroupByUserId" >> beam.GroupByKey()
+        )
+
+        # Example: Write to BigQuery or further processing can be added here
+        # grouped | "WriteToBQ" >> beam.io.WriteToBigQuery(...)
 
 if __name__ == "__main__":
-    # Start the publishing loop in a separate thread
-    thread = threading.Thread(target=publish_messages, daemon=True)
-    thread.start()
-
-    # Run the Flask web server
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
-
-\
-
-
-  
-    
-     
-
-
-
-
-
-
+    run()
