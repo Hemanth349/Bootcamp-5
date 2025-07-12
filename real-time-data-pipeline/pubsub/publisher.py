@@ -1,23 +1,7 @@
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 from apache_beam.transforms import window
-import json
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 import datetime
-
-class ParseMessage(beam.DoFn):
-    def process(self, element):
-        message = element.decode('utf-8')  # Pub/Sub sends bytes
-        timestamp = datetime.datetime.utcnow().isoformat()
-
-        # Send raw message to GCS output
-        yield beam.pvalue.TaggedOutput('raw', message)
-
-        # Processed record for BigQuery
-        row = {
-            'timestamp': timestamp,
-            'message': message
-        }
-        yield row
 
 def run():
     import argparse
@@ -57,13 +41,17 @@ def run():
             create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
         )
 
-        # Window raw messages before writing to GCS to avoid GroupByKey error
-        messages.raw | 'WindowRawMessages' >> beam.WindowInto(window.FixedWindows(60)) \
-                     | 'WriteToGCS' >> beam.io.WriteToText(
-                         known_args.output_path,
-                         file_name_suffix='.txt',
-                         shard_name_template='-SS-of-NN'
-                     )
+        # Window raw messages with triggers to avoid GroupByKey error on streaming
+        messages.raw | 'WindowRawMessages' >> beam.WindowInto(
+            window.FixedWindows(60),
+            allowed_lateness=0,
+            trigger=window.AfterProcessingTime(60),
+            accumulation_mode=window.AccumulationMode.DISCARDING
+        ) | 'WriteToGCS' >> beam.io.WriteToText(
+            known_args.output_path,
+            file_name_suffix='.txt',
+            shard_name_template='-SS-of-NN'
+        )
 
 if __name__ == '__main__':
     run()
