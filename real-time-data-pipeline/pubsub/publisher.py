@@ -51,13 +51,13 @@ def run():
             | 'ParseMessages' >> beam.ParDo(ParseMessage()).with_outputs('raw', main='bq')
         )
 
-        # Write to BigQuery
         messages.bq | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-            known_args.bq_table,
-            schema='timestamp:TIMESTAMP,message:STRING',
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-        )
+    known_args.output_table,
+    schema='timestamp:TIMESTAMP,message:STRING',
+    write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+    create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+)
+
 
         # Write raw to GCS
         messages.raw | 'WriteToGCS' >> beam.io.WriteToText(
