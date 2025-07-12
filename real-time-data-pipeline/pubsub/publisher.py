@@ -28,6 +28,8 @@ def run():
     parser.add_argument('--bq_table', required=True)
     parser.add_argument('--temp_location', required=True)
     parser.add_argument('--staging_location', required=True)
+    parser.add_argument('--output_table', required=True)
+
 
     known_args, pipeline_args = parser.parse_known_args()
 
