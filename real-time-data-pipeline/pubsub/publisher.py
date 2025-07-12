@@ -1,56 +1,68 @@
-from flask import Flask
-import threading
-import time
-import random
-import json
-from google.cloud import pubsub_v1
-import os
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions, GoogleCloudOptions
+import datetime
 
-app = Flask(__name__)
+class ParseMessage(beam.DoFn):
+    def process(self, element):
+        message = element.decode('utf-8')  # Pub/Sub sends bytes
+        timestamp = datetime.datetime.utcnow().isoformat()
 
-project_id = "ancient-cortex-465315-t4"
-topic_id = "stream-topic"
-# Create a Pub/Sub publisher client
-publisher = pubsub_v1.PublisherClient()
-# Create the topic path (required by the API)
-topic_path = publisher.topic_path(project_id, topic_id)
+        # Send raw message to GCS output
+        yield beam.pvalue.TaggedOutput('raw', message)
 
-def publish_messages():
-    print("Publishing messages to Pub/Sub...")
-    while True:
-          # Infinite loop to send messages every 2 seconds
-        data = {
-            "user_id": f"user_{random.randint(1,100)}",
-            "action": random.choice(["click", "purchase", "view"]),
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Processed record for BigQuery
+        row = {
+            'timestamp': timestamp,
+            'message': message
         }
-      # Convert to bytes and publish to Pub/Sub
-        publisher.publish(topic_path, json.dumps(data).encode("utf-8"))
-        time.sleep(2)     # Wait for 2 seconds
+        yield row
 
-@app.route("/")
-def health_check():
-    return "Publisher service is running!", 200
+def run():
+    import argparse
 
-if __name__ == "__main__":
-    # Start the publishing loop in a separate thread
-    thread = threading.Thread(target=publish_messages, daemon=True)
-    thread.start()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--project', required=True)
+    parser.add_argument('--region', required=True)
+    parser.add_argument('--input_topic', required=True)
+    parser.add_argument('--output_path', required=True)
+    parser.add_argument('--bq_table', required=True)
+    parser.add_argument('--temp_location', required=True)
+    parser.add_argument('--staging_location', required=True)
 
-    # Run the Flask web server
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    known_args, pipeline_args = parser.parse_known_args()
 
+    options = PipelineOptions(pipeline_args)
+    options.view_as(StandardOptions).streaming = True
+    options.view_as(StandardOptions).runner = 'DataflowRunner'
 
-\
+    # Set Google Cloud specific options explicitly (optional but good practice)
+    google_cloud_options = options.view_as(GoogleCloudOptions)
+    google_cloud_options.project = known_args.project
+    google_cloud_options.region = known_args.region
+    google_cloud_options.temp_location = known_args.temp_location
+    google_cloud_options.staging_location = known_args.staging_location
 
+    with beam.Pipeline(options=options) as p:
+        messages = (
+            p
+            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
+            | 'ParseMessages' >> beam.ParDo(ParseMessage()).with_outputs('raw', main='bq')
+        )
 
-  
-    
-     
+        # Write to BigQuery
+        messages.bq | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+            known_args.bq_table,
+            schema='timestamp:TIMESTAMP,message:STRING',
+            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+        )
 
+        # Write raw to GCS
+        messages.raw | 'WriteToGCS' >> beam.io.WriteToText(
+            known_args.output_path,
+            file_name_suffix='.txt',
+            shard_name_template='-SS-of-NN'
+        )
 
-
-
-
-
+if __name__ == '__main__':
+    run()
