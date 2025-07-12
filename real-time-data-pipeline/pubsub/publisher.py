@@ -1,57 +1,56 @@
-import apache_beam as beam
-from apache_beam.transforms import window
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
-import datetime
+from flask import Flask
+import threading
+import time
+import random
+import json
+from google.cloud import pubsub_v1
+import os
 
-def run():
-    import argparse
+app = Flask(__name__)
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--project', required=True)
-    parser.add_argument('--region', required=True)
-    parser.add_argument('--runner', required=True)
-    parser.add_argument('--input_topic', required=True)
-    parser.add_argument('--output_path', required=True)
-    parser.add_argument('--output_table', required=True)
-    parser.add_argument('--temp_location', required=True)
-    parser.add_argument('--staging_location', required=True)
+project_id = "ancient-cortex-465315-t4"
+topic_id = "stream-topic"
+# Create a Pub/Sub publisher client
+publisher = pubsub_v1.PublisherClient()
+# Create the topic path (required by the API)
+topic_path = publisher.topic_path(project_id, topic_id)
 
-    known_args, pipeline_args = parser.parse_known_args()
+def publish_messages():
+    print("Publishing messages to Pub/Sub...")
+    while True:
+          # Infinite loop to send messages every 2 seconds
+        data = {
+            "user_id": f"user_{random.randint(1,100)}",
+            "action": random.choice(["click", "purchase", "view"]),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        }
+      # Convert to bytes and publish to Pub/Sub
+        publisher.publish(topic_path, json.dumps(data).encode("utf-8"))
+        time.sleep(2)     # Wait for 2 seconds
 
-    options = PipelineOptions(pipeline_args)
-    options.view_as(StandardOptions).streaming = True
-    options.view_as(StandardOptions).runner = known_args.runner
-    options.view_as(StandardOptions).project = known_args.project
-    options.view_as(StandardOptions).region = known_args.region
-    options.view_as(StandardOptions).temp_location = known_args.temp_location
-    options.view_as(StandardOptions).staging_location = known_args.staging_location
+@app.route("/")
+def health_check():
+    return "Publisher service is running!", 200
 
-    with beam.Pipeline(options=options) as p:
-        messages = (
-            p
-            | 'ReadFromPubSub' >> beam.io.ReadFromPubSub(topic=known_args.input_topic)
-            | 'ParseMessages' >> beam.ParDo(ParseMessage()).with_outputs('raw', main='bq')
-        )
+if __name__ == "__main__":
+    # Start the publishing loop in a separate thread
+    thread = threading.Thread(target=publish_messages, daemon=True)
+    thread.start()
 
-        # Write processed messages to BigQuery
-        messages.bq | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
-            known_args.output_table,
-            schema='timestamp:TIMESTAMP,message:STRING',
-            write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
-            create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
-        )
+    # Run the Flask web server
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
-        # Window raw messages with triggers to avoid GroupByKey error on streaming
-        messages.raw | 'WindowRawMessages' >> beam.WindowInto(
-            window.FixedWindows(60),
-            allowed_lateness=0,
-            trigger=window.AfterProcessingTime(60),
-            accumulation_mode=window.AccumulationMode.DISCARDING
-        ) | 'WriteToGCS' >> beam.io.WriteToText(
-            known_args.output_path,
-            file_name_suffix='.txt',
-            shard_name_template='-SS-of-NN'
-        )
 
-if __name__ == '__main__':
-    run()
+\
+
+
+  
+    
+     
+
+
+
+
+
+
